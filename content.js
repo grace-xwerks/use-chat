@@ -1,6 +1,10 @@
 const CONFIG = {
   domain: 'graceeng.com',
-  chatUrl: 'https://chat.google.com'
+  chatUrl: 'https://chat.google.com',
+  // Subject keywords (case-insensitive substring match) that bypass the nudge.
+  // Use for cases where email genuinely is the right channel: legal CYA,
+  // audit trails, FYI threads with attachments, etc.
+  subjectKeywordExceptions: ['[email-ok]', 'fyi:', 'audit', 'legal', 'invoice']
 };
 
 const BANNER_ID = 'use-chat-banner';
@@ -12,26 +16,39 @@ const instrumented = new WeakSet();
 // RECIPIENT DETECTION
 // Tries multiple Gmail DOM patterns for resilience
 // ─────────────────────────────────────────────
-function getInternalRecipients(composeEl) {
+function getAllRecipientEmails(composeEl) {
   const found = new Set();
 
-  // Pattern 1: data-hovercard-id (most reliable, used on recipient chips)
   composeEl.querySelectorAll('[data-hovercard-id]').forEach(el => {
     const val = el.getAttribute('data-hovercard-id');
-    if (val && val.toLowerCase().endsWith('@' + CONFIG.domain)) {
-      found.add(val.toLowerCase());
-    }
+    if (val && val.includes('@')) found.add(val.toLowerCase());
   });
 
-  // Pattern 2: email attribute on spans (older Gmail builds)
   composeEl.querySelectorAll('span[email]').forEach(el => {
     const val = el.getAttribute('email');
-    if (val && val.toLowerCase().endsWith('@' + CONFIG.domain)) {
-      found.add(val.toLowerCase());
-    }
+    if (val && val.includes('@')) found.add(val.toLowerCase());
   });
 
   return [...found];
+}
+
+function getInternalRecipients(composeEl) {
+  const suffix = '@' + CONFIG.domain;
+  return getAllRecipientEmails(composeEl).filter(e => e.endsWith(suffix));
+}
+
+function hasExternalRecipient(composeEl) {
+  const suffix = '@' + CONFIG.domain;
+  return getAllRecipientEmails(composeEl).some(e => !e.endsWith(suffix));
+}
+
+function subjectMatchesException(composeEl) {
+  const input = composeEl.querySelector('input[name="subjectbox"]');
+  if (!input || !input.value) return false;
+  const subject = input.value.toLowerCase();
+  return CONFIG.subjectKeywordExceptions.some(kw =>
+    subject.includes(kw.toLowerCase())
+  );
 }
 
 // ─────────────────────────────────────────────
@@ -41,8 +58,16 @@ function updateBanner(composeEl) {
   const existing = composeEl.querySelector('#' + BANNER_ID);
   const internal = getInternalRecipients(composeEl);
 
-  // No internal recipients — remove banner if present
-  if (internal.length === 0) {
+  // Suppress when:
+  //  - no internal recipients
+  //  - mixed audience (external + internal) — email is the right tool there
+  //  - subject contains an exception keyword
+  const suppress =
+    internal.length === 0 ||
+    hasExternalRecipient(composeEl) ||
+    subjectMatchesException(composeEl);
+
+  if (suppress) {
     if (existing) existing.remove();
     return;
   }
@@ -110,6 +135,15 @@ function instrumentCompose(composeEl) {
     subtree: true,
     attributes: true,
     attributeFilter: ['data-hovercard-id', 'email']
+  });
+
+  // Subject typing doesn't mutate DOM — listen for input so keyword
+  // exceptions take effect as the user types.
+  composeEl.addEventListener('input', e => {
+    if (e.target.matches && e.target.matches('input[name="subjectbox"]')) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => updateBanner(composeEl), 150);
+    }
   });
 
   updateBanner(composeEl);
