@@ -1,3 +1,31 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// use-chat — content script
+//
+// Safety properties (for CWS reviewers and future maintainers):
+//   • No remote code         — no fetch(), XHR, eval(), new Function(),
+//                              importScripts(), or remote <script>/<link>.
+//   • No network I/O         — the script never contacts any server.
+//                              All logic runs locally in the Gmail tab.
+//   • No telemetry           — no analytics, error reporting, or logging
+//                              outside the user's own DevTools console.
+//   • No data collection     — does not read, persist, or transmit message
+//                              bodies, subjects, attachments, or contacts.
+//                              Recipient addresses are read transiently from
+//                              the compose DOM to decide whether to render
+//                              the banner; they are not stored or sent.
+//   • Local storage only     — chrome.storage.local holds a single key,
+//                              `useChatDismissals`, mapping recipient email
+//                              to a dismiss timestamp. Used solely to
+//                              suppress the banner for 30 minutes after the
+//                              user dismisses it. Never synced or exported.
+//   • Permissions            — `storage` (for the above) and host access to
+//                              https://mail.google.com/* only. No tabs,
+//                              cookies, history, bookmarks, or webRequest.
+//   • innerHTML hygiene      — the two innerHTML writes (banner + modal)
+//                              build markup from static templates plus
+//                              escapeHtml()'d strings only.
+// ─────────────────────────────────────────────────────────────────────────────
+
 const CONFIG = {
   domain: 'graceeng.com',
   chatUrl: 'https://chat.google.com',
