@@ -79,9 +79,13 @@ function displayName(recipient) {
   return recipient.name || recipient.email.split('@')[0];
 }
 
-function dmUrl(email) {
-  // Email-keyed Chat deep link — opens or starts a DM with this address.
-  return `https://mail.google.com/chat/u/0/#chat/dm/?email=${encodeURIComponent(email)}`;
+function dmUrl(_email) {
+  // Google Chat has no public email-keyed DM deep link — Chat uses opaque
+  // dm/<id> strings, not addresses. The ?email= pattern lands users on an
+  // empty space view. Until we find a working pattern (see issue #2),
+  // fall back to opening Chat at its default landing so the user can
+  // start the DM themselves.
+  return CONFIG.chatUrl;
 }
 
 function getInternalRecipients(composeEl) {
@@ -115,7 +119,7 @@ function escapeHtml(s) {
 function renderBannerBody(banner, internal) {
   const chips = internal.map(r => {
     const label = escapeHtml(displayName(r));
-    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="DM ${escapeHtml(r.email)}">${label}</a>`;
+    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="Open Chat to message ${escapeHtml(r.email)}">${label}</a>`;
   }).join('');
 
   const leadIn = internal.length === 1
@@ -212,7 +216,7 @@ function showConfirmModal(composeEl, internal, sendBtn) {
 
   const chips = internal.map(r => {
     const label = escapeHtml(displayName(r));
-    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="DM ${escapeHtml(r.email)}">${label}</a>`;
+    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="Open Chat to message ${escapeHtml(r.email)}">${label}</a>`;
   }).join('');
 
   const lead = internal.length === 1
