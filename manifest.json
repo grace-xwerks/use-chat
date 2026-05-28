@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Use Chat",
+  "version": "1.0",
+  "description": "Reminds Grace Engineering teammates to use Google Chat instead of internal email.",
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
