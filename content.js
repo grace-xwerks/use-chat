@@ -41,6 +41,22 @@ const instrumented = new WeakSet();
 // RECIPIENT DETECTION
 // Tries multiple Gmail DOM patterns for resilience
 // ─────────────────────────────────────────────
+function isCommittedRecipient(el) {
+  // Gmail renders the autocomplete dropdown INSIDE the compose dialog. Its
+  // suggestion rows carry data-hovercard-id and span[email] just like
+  // committed chips, so a naive querySelector picks them up too.
+  //
+  // Discriminator (verified live, May 2026): the committed recipient row
+  // lives inside [role="listbox"] with an aria-label set ("Search Field"
+  // in en-US). The autocomplete popup is a separate [role="listbox"] with
+  // no aria-label. Checking for the *presence* of an aria-label avoids
+  // hard-coding the locale string.
+  const listbox = el.closest('[role="listbox"]');
+  if (!listbox) return false;
+  const label = listbox.getAttribute('aria-label');
+  return !!(label && label.trim());
+}
+
 function getAllRecipients(composeEl) {
   const byEmail = new Map();
 
@@ -54,10 +70,12 @@ function getAllRecipients(composeEl) {
   };
 
   composeEl.querySelectorAll('[data-hovercard-id]').forEach(el => {
+    if (!isCommittedRecipient(el)) return;
     record(el.getAttribute('data-hovercard-id'), extractName(el));
   });
 
   composeEl.querySelectorAll('span[email]').forEach(el => {
+    if (!isCommittedRecipient(el)) return;
     record(el.getAttribute('email'), extractName(el));
   });
 
