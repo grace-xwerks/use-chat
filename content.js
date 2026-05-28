@@ -65,11 +65,13 @@ function getAllRecipients(composeEl) {
 }
 
 function extractName(el) {
-  // Gmail chips usually carry name= on the same node as email/data-hovercard-id.
+  // Current Gmail builds put the display name only in textContent of the chip
+  // (verified against May 2026 markup — name attribute is absent). Older builds
+  // did carry name=, so we still check it first as a defensive fallback.
   const name = el.getAttribute('name');
   if (name && name.trim()) return name.trim();
   const text = (el.textContent || '').trim();
-  // The chip's text is often "Jane Doe <jane@x.com>" — strip the address.
+  // Older builds rendered chip text as "Jane Doe <jane@x.com>" — strip address.
   return text.replace(/<[^>]+>/g, '').trim();
 }
 
