@@ -183,12 +183,109 @@ function updateBanner(composeEl) {
 }
 
 // ─────────────────────────────────────────────
+// SEND INTERCEPTION
+// ─────────────────────────────────────────────
+const MODAL_ID = 'use-chat-modal';
+
+function isSendButton(el) {
+  if (!el || !el.closest) return null;
+  const btn = el.closest('[role="button"]');
+  if (!btn) return null;
+  const tip = btn.getAttribute('data-tooltip') || '';
+  const label = btn.getAttribute('aria-label') || '';
+  if (/^Send\b/.test(tip) || /^Send\b/.test(label)) return btn;
+  return null;
+}
+
+function shouldInterceptSend(composeEl) {
+  const internal = getInternalRecipients(composeEl);
+  if (internal.length === 0) return null;
+  if (hasExternalRecipient(composeEl)) return null;
+  if (subjectMatchesException(composeEl)) return null;
+  return internal;
+}
+
+function showConfirmModal(composeEl, internal, sendBtn) {
+  if (composeEl.querySelector('#' + MODAL_ID)) return;
+
+  const chips = internal.map(r => {
+    const label = escapeHtml(displayName(r));
+    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="DM ${escapeHtml(r.email)}">${label}</a>`;
+  }).join('');
+
+  const lead = internal.length === 1
+    ? 'You\'re emailing an internal teammate.'
+    : `You're emailing ${internal.length} internal teammates.`;
+
+  const modal = document.createElement('div');
+  modal.id = MODAL_ID;
+  modal.innerHTML = `
+    <div class="ucm-backdrop"></div>
+    <div class="ucm-card" role="dialog" aria-modal="true">
+      <div class="ucm-title">💬 Use Chat instead?</div>
+      <div class="ucm-body">
+        <p>${lead} Try Chat first — it's usually faster.</p>
+        <div class="ucb-chips">${chips}</div>
+      </div>
+      <div class="ucm-actions">
+        <button class="ucm-cancel">Back to draft</button>
+        <button class="ucm-send">Send anyway</button>
+      </div>
+    </div>
+  `;
+
+  const close = () => modal.remove();
+
+  modal.querySelector('.ucm-backdrop').addEventListener('click', close);
+  modal.querySelector('.ucm-cancel').addEventListener('click', close);
+  modal.querySelector('.ucm-send').addEventListener('click', () => {
+    close();
+    // Bypass our interceptor for this one synthesized click.
+    sendBtn.dataset.ucbBypass = '1';
+    sendBtn.click();
+    delete sendBtn.dataset.ucbBypass;
+  });
+
+  composeEl.appendChild(modal);
+}
+
+function attachSendInterceptor(composeEl) {
+  composeEl.addEventListener('click', e => {
+    const btn = isSendButton(e.target);
+    if (!btn) return;
+    if (btn.dataset.ucbBypass === '1') return;
+
+    const internal = shouldInterceptSend(composeEl);
+    if (!internal) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    showConfirmModal(composeEl, internal, btn);
+  }, true);
+
+  // Ctrl/Cmd+Enter sends without clicking the button — gate that too.
+  composeEl.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    const internal = shouldInterceptSend(composeEl);
+    if (!internal) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    const btn = composeEl.querySelector(
+      '[role="button"][data-tooltip^="Send"], [role="button"][aria-label^="Send"]'
+    );
+    if (btn) showConfirmModal(composeEl, internal, btn);
+  }, true);
+}
+
+// ─────────────────────────────────────────────
 // COMPOSE WINDOW INSTRUMENTATION
 // Attaches a MutationObserver to a single compose window
 // ─────────────────────────────────────────────
 function instrumentCompose(composeEl) {
   if (instrumented.has(composeEl)) return;
   instrumented.add(composeEl);
+
+  attachSendInterceptor(composeEl);
 
   let debounceTimer = null;
 
