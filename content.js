@@ -4,10 +4,35 @@ const CONFIG = {
   // Subject keywords (case-insensitive substring match) that bypass the nudge.
   // Use for cases where email genuinely is the right channel: legal CYA,
   // audit trails, FYI threads with attachments, etc.
-  subjectKeywordExceptions: ['[email-ok]', 'fyi:', 'audit', 'legal', 'invoice']
+  subjectKeywordExceptions: ['[email-ok]', 'fyi:', 'audit', 'legal', 'invoice'],
+  dismissTtlMs: 30 * 60 * 1000
 };
 
 const BANNER_ID = 'use-chat-banner';
+const STORAGE_KEY = 'useChatDismissals';
+
+// In-memory mirror of chrome.storage.local — primed on script load.
+// Lets updateBanner stay synchronous (called from observers/polls).
+let dismissCache = {};
+chrome.storage.local.get(STORAGE_KEY, data => {
+  dismissCache = data[STORAGE_KEY] || {};
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[STORAGE_KEY]) {
+    dismissCache = changes[STORAGE_KEY].newValue || {};
+  }
+});
+
+function isDismissed(email) {
+  const ts = dismissCache[email];
+  return typeof ts === 'number' && (Date.now() - ts) < CONFIG.dismissTtlMs;
+}
+
+function recordDismissals(emails) {
+  const now = Date.now();
+  emails.forEach(e => { dismissCache[e] = now; });
+  chrome.storage.local.set({ [STORAGE_KEY]: dismissCache });
+}
 
 // Track instrumented compose windows so we don't double-attach observers
 const instrumented = new WeakSet();
@@ -106,6 +131,7 @@ function renderBannerBody(banner, internal) {
   `;
 
   banner.querySelector('.ucb-dismiss').addEventListener('click', () => {
+    recordDismissals(internal.map(r => r.email));
     banner.remove();
   });
 }
@@ -118,10 +144,16 @@ function updateBanner(composeEl) {
   //  - no internal recipients
   //  - mixed audience (external + internal) — email is the right tool there
   //  - subject contains an exception keyword
+  // Dismissed when every current internal recipient has a fresh dismiss
+  // record. Adding a new teammate brings the banner back automatically.
+  const allDismissed = internal.length > 0 &&
+    internal.every(r => isDismissed(r.email));
+
   const suppress =
     internal.length === 0 ||
     hasExternalRecipient(composeEl) ||
-    subjectMatchesException(composeEl);
+    subjectMatchesException(composeEl) ||
+    allDismissed;
 
   if (suppress) {
     if (existing) existing.remove();
