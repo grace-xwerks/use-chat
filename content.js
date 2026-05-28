@@ -16,30 +16,55 @@ const instrumented = new WeakSet();
 // RECIPIENT DETECTION
 // Tries multiple Gmail DOM patterns for resilience
 // ─────────────────────────────────────────────
-function getAllRecipientEmails(composeEl) {
-  const found = new Set();
+function getAllRecipients(composeEl) {
+  const byEmail = new Map();
+
+  const record = (email, name) => {
+    if (!email || !email.includes('@')) return;
+    const key = email.toLowerCase();
+    // First non-empty name wins; don't let a later bare chip clobber it.
+    if (!byEmail.has(key) || (name && !byEmail.get(key).name)) {
+      byEmail.set(key, { email: key, name: name || '' });
+    }
+  };
 
   composeEl.querySelectorAll('[data-hovercard-id]').forEach(el => {
-    const val = el.getAttribute('data-hovercard-id');
-    if (val && val.includes('@')) found.add(val.toLowerCase());
+    record(el.getAttribute('data-hovercard-id'), extractName(el));
   });
 
   composeEl.querySelectorAll('span[email]').forEach(el => {
-    const val = el.getAttribute('email');
-    if (val && val.includes('@')) found.add(val.toLowerCase());
+    record(el.getAttribute('email'), extractName(el));
   });
 
-  return [...found];
+  return [...byEmail.values()];
+}
+
+function extractName(el) {
+  // Gmail chips usually carry name= on the same node as email/data-hovercard-id.
+  const name = el.getAttribute('name');
+  if (name && name.trim()) return name.trim();
+  const text = (el.textContent || '').trim();
+  // The chip's text is often "Jane Doe <jane@x.com>" — strip the address.
+  return text.replace(/<[^>]+>/g, '').trim();
+}
+
+function displayName(recipient) {
+  return recipient.name || recipient.email.split('@')[0];
+}
+
+function dmUrl(email) {
+  // Email-keyed Chat deep link — opens or starts a DM with this address.
+  return `https://mail.google.com/chat/u/0/#chat/dm/?email=${encodeURIComponent(email)}`;
 }
 
 function getInternalRecipients(composeEl) {
   const suffix = '@' + CONFIG.domain;
-  return getAllRecipientEmails(composeEl).filter(e => e.endsWith(suffix));
+  return getAllRecipients(composeEl).filter(r => r.email.endsWith(suffix));
 }
 
 function hasExternalRecipient(composeEl) {
   const suffix = '@' + CONFIG.domain;
-  return getAllRecipientEmails(composeEl).some(e => !e.endsWith(suffix));
+  return getAllRecipients(composeEl).some(r => !r.email.endsWith(suffix));
 }
 
 function subjectMatchesException(composeEl) {
@@ -54,6 +79,37 @@ function subjectMatchesException(composeEl) {
 // ─────────────────────────────────────────────
 // BANNER INJECTION
 // ─────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function renderBannerBody(banner, internal) {
+  const chips = internal.map(r => {
+    const label = escapeHtml(displayName(r));
+    return `<a class="ucb-chip" href="${dmUrl(r.email)}" target="_blank" title="DM ${escapeHtml(r.email)}">${label}</a>`;
+  }).join('');
+
+  const leadIn = internal.length === 1
+    ? 'This teammate is on Chat:'
+    : 'These teammates are on Chat:';
+
+  banner.innerHTML = `
+    <span class="ucb-icon">💬</span>
+    <div class="ucb-content">
+      <strong>Use Chat instead!</strong>
+      <span class="ucb-count">${leadIn}</span>
+      <div class="ucb-chips">${chips}</div>
+    </div>
+    <button class="ucb-dismiss" title="Dismiss">✕</button>
+  `;
+
+  banner.querySelector('.ucb-dismiss').addEventListener('click', () => {
+    banner.remove();
+  });
+}
+
 function updateBanner(composeEl) {
   const existing = composeEl.querySelector('#' + BANNER_ID);
   const internal = getInternalRecipients(composeEl);
@@ -72,34 +128,15 @@ function updateBanner(composeEl) {
     return;
   }
 
-  // Already showing — update recipient count
+  // Rebuild contents if already showing so name/link list stays accurate.
   if (existing) {
-    const countEl = existing.querySelector('.ucb-count');
-    if (countEl) {
-      const n = internal.length;
-      countEl.textContent = `${n} internal teammate${n > 1 ? 's' : ''} detected — keep it in Google Chat.`;
-    }
+    renderBannerBody(existing, internal);
     return;
   }
 
-  // Build banner
   const banner = document.createElement('div');
   banner.id = BANNER_ID;
-
-  const n = internal.length;
-  banner.innerHTML = `
-    <span class="ucb-icon">💬</span>
-    <div class="ucb-content">
-      <strong>Use Chat instead!</strong>
-      <span class="ucb-count">${n} internal teammate${n > 1 ? 's' : ''} detected — keep it in Google Chat.</span>
-    </div>
-    <a href="${CONFIG.chatUrl}" target="_blank" class="ucb-btn">Open Chat</a>
-    <button class="ucb-dismiss" title="Dismiss">✕</button>
-  `;
-
-  banner.querySelector('.ucb-dismiss').addEventListener('click', () => {
-    banner.remove();
-  });
+  renderBannerBody(banner, internal);
 
   // Insert above the message body
   const insertTarget =

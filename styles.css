@@ -65,6 +65,30 @@
   background: #1557b0;
 }
 
+#use-chat-banner .ucb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+#use-chat-banner .ucb-chip {
+  display: inline-block;
+  background: #1a73e8;
+  color: #fff !important;
+  text-decoration: none;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+#use-chat-banner .ucb-chip:hover {
+  background: #1557b0;
+}
+
 #use-chat-banner .ucb-dismiss {
   background: none;
   border: none;
