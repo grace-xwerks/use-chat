@@ -52,3 +52,11 @@ If a release breaks Gmail compose for the fleet:
    Installation policy to **Blocked** and the previously-pinned
    version to roll back, OR remove from the OU entirely.
 2. Open a hotfix issue, ship a patch release, then re-enable.
+
+## Published listing (recorded 2026-06-01)
+
+- **Extension ID:** `jbndnjbcfpompmlnphngoabeifbceohc`
+- **Store URL:** <https://chromewebstore.google.com/detail/use-chat/jbndnjbcfpompmlnphngoabeifbceohc>
+- **Publisher ID:** `8748c170-a61e-456c-aee7-4cc715d95f6d` (display name: shanewaid; contact `shanewaid@graceeng.com`, verified)
+- **Status:** Published, **Unlisted** — v1.1.0, live 2026-05-29.
+- Org rollout: add by the extension ID above in Workspace Admin → Apps & Extensions → Force install.
